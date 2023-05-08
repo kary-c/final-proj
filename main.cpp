@@ -33,7 +33,7 @@ enum CollisionType {
 
 struct Duck {
     vec2 position;
-    int platform = NULL;
+    int platform = 0;
     real velocity = 0.5;
     vec2 duck_limits = {0, 0};
     vec2 delta = {0, 0};
@@ -48,7 +48,6 @@ struct Duck {
 struct Land {
     vec2 position;
     vec2 size;
-    vec3 color;
 };
 
 CollisionType check_collision(vec2 pos_1, vec2 size_1, vec2 pos_2, vec2 size_2) {
@@ -123,27 +122,35 @@ void generate_new_platform(Land prev, vec2 y_limits, StretchyBuffer<Land>* platf
         real max_y = y_limits[1] - 10;
         real min_y = y_limits[0] + 5;
 
-        real y = random_real(prev.position.y - 10, prev.position.y + 10);
-        vec2 position = {random_real(min_x, max_x), CLAMP(y, min_y, max_y)};
-        vec2 size = {random_real(10, 30), 3.0};
+        real y = random_real(prev.position.y - 8, prev.position.y + 8);
 
-        if (size.x > 20) {
+        Land new_platform;
+        new_platform.position = {random_real(min_x, max_x), CLAMP(y, min_y, max_y)};
+        new_platform.size = {random_real(10, 30), 3.0};
+        sbuff_push_back(platforms, new_platform);
+
+        if (new_platform.size.x > 20) {
             vec2 duck_position = {
-                position.x + size.x/2,
-                position.y + size.y
+                new_platform.position.x + new_platform.size.x/2,
+                new_platform.position.y + new_platform.size.y
             };
 
-            vec2 platform_limits = {position.x, position.x + size.x - 3.0};
-
-            sbuff_push_back(ducks, {duck_position, platforms->length, 0.1, platform_limits});
+            vec2 platform_limits = {new_platform.position.x, new_platform.position.x + new_platform.size.x - 3.0};
+            Duck new_duck;
+            new_duck.position = duck_position;
+            new_duck.platform = platforms->length;
+            new_duck.velocity = 0.1;
+            new_duck.duck_limits = platform_limits;
+            sbuff_push_back(ducks, new_duck);
         }
-        sbuff_push_back(platforms, {position, size, monokai.green});
 }
 
 void init_platforms(vec2 y_limits, StretchyBuffer<Land>* platforms, StretchyBuffer<Duck>* ducks) {
     srand(time(NULL));
 
-    Land initial_platform = {{-25.0, -25.0}, {50.0, 3.0}, monokai.gray};
+    Land initial_platform;
+    initial_platform.position = {-25.0, -25.0};
+    initial_platform.size = {50.0, 3.0};
     sbuff_push_back(platforms, initial_platform);
     
     for (int i = 1; i < 10; i++) {
@@ -314,7 +321,8 @@ void final() {
     real screen_width = camera.screen_height_World*2; 
     real screen_height = camera.screen_height_World;
     
-    struct Duck main_duck = {{0, 0}};
+    Duck main_duck;
+    main_duck.position = {0,0};
 
     int3 triangle_indices[] = {{0, 1, 2}, {0, 2, 3}};
     vec2 texture_coords[] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
@@ -338,77 +346,77 @@ void final() {
         real x_limit = camera.o_x - 2*screen_height;
         gui_readout("high score", &high_score);
         gui_readout("time", &time);
-
-        if (main_duck.position.x < camera.o_x - screen_height 
-        || main_duck.position.y < camera.o_y - screen_height/2) {
-            game_over = true;
-        }
-
+        
         if (game_over) {
+            draw_backgrounds(PV, V, M, screen_width, screen_height, triangle_indices, &backgrounds);
             gui_printf("game over :( press space to play again!");
             if (time > high_score) { high_score = time; }
-
             if (gui_button("play again", COW_KEY_SPACE)) {
                 reset_game(&camera, &main_duck, &time, &scroll_speed, &platforms, &ducks, &backgrounds);
                 game_over = false;
             }
-        }
-        
-        update_duck(&main_duck);
-        update_background(&backgrounds, camera);
-        draw_backgrounds(PV, V, M, screen_width, screen_height, triangle_indices, &backgrounds);
 
-        for (int i = 0; i < ducks.length; i++) {
-            Land current_platform = platforms[ducks[i].platform];
-            if (ducks[i].position.y < y_limits[0]) {
-                sbuff_delete(&ducks, i);
+        } else {
+
+            update_duck(&main_duck);
+            update_background(&backgrounds, camera);
+            draw_backgrounds(PV, V, M, screen_width, screen_height, triangle_indices, &backgrounds);
+
+            for (int i = 0; i < ducks.length; i++) {
+                Land current_platform = platforms[ducks[i].platform];
+                if (ducks[i].position.y < y_limits[0]) {
+                    sbuff_delete(&ducks, i);
+                }
+                update_competition(&ducks[i]);
+
+                CollisionType collision_type = check_collision(main_duck.position, DUCK_SZ, ducks[i].position, DUCK_SZ);
+                handle_duck_collision(collision_type, &main_duck, i, &ducks);
             }
-            update_competition(&ducks[i]);
 
-            CollisionType collision_type = check_collision(main_duck.position, DUCK_SZ, ducks[i].position, DUCK_SZ);
-            handle_duck_collision(collision_type, &main_duck, i, &ducks);
-        }
+            for (int i = 0; i < platforms.length; i++) {
+                Land platform = platforms[i];
 
-        for (int i = 0; i < platforms.length; i++) {
-            Land platform = platforms[i];
+                update_platforms(i, &platforms, &ducks, x_limit, y_limits);
 
-            update_platforms(i, &platforms, &ducks, x_limit, y_limits);
+                CollisionType collision_type = check_collision(main_duck.position, DUCK_SZ, platform.position, platform.size);
+                if (collision_type == BOTTOM_COLLISION) {
+                    main_duck.jump = 0;
+                    main_duck.position.y = platform.position.y + platform.size.y;
+                    main_duck.on_ground = true;
+                    collision = true;
+                }
+            }
 
-            CollisionType collision_type = check_collision(main_duck.position, DUCK_SZ, platform.position, platform.size);
-            if (collision_type == BOTTOM_COLLISION) {
-                main_duck.jump = 0;
-                main_duck.position.y = platform.position.y + platform.size.y;
-                main_duck.on_ground = true;
-                collision = true;
+            if (!collision) {
+                main_duck.delta += gravity;
+                main_duck.on_ground = false;
+            }
+            
+            main_duck.position += main_duck.delta;
+            
+            vec3 duck_vp[] = {
+                {main_duck.position.x, main_duck.position.y, 0},
+                {main_duck.position.x + DUCK_SZ.x, main_duck.position.y, 0},
+                {main_duck.position.x + DUCK_SZ.x, main_duck.position.y + DUCK_SZ.y, 0},
+                {main_duck.position.x, main_duck.position.y + DUCK_SZ.y, 0},
+            };
+
+            mesh_draw(PV, V, M, 2, triangle_indices, 4, duck_vp, NULL, NULL, {}, texture_coords, main_duck.texture);
+            
+            draw_platforms(PV, V, M, triangle_indices, platforms);
+            draw_ducks(PV, V, M, triangle_indices, ducks);
+
+            frame += 1;
+            collision = false;
+            camera.o_x += scroll_speed + 0.001*(time);
+            time += 0.0167;
+
+            if (main_duck.position.x < camera.o_x - screen_height 
+                || main_duck.position.y < camera.o_y - screen_height/2) {
+                    game_over = true;
             }
         }
-
-        if (!collision) {
-            main_duck.delta += gravity;
-            main_duck.on_ground = false;
-        }
-        
-        main_duck.position += main_duck.delta;
-        
-        vec3 duck_vp[] = {
-            {main_duck.position.x, main_duck.position.y, 0},
-            {main_duck.position.x + DUCK_SZ.x, main_duck.position.y, 0},
-            {main_duck.position.x + DUCK_SZ.x, main_duck.position.y + DUCK_SZ.y, 0},
-            {main_duck.position.x, main_duck.position.y + DUCK_SZ.y, 0},
-        };
-
-        mesh_draw(PV, V, M, 2, triangle_indices, 4, duck_vp, NULL, NULL, {}, texture_coords, main_duck.texture);
-        
-        draw_platforms(PV, V, M, triangle_indices, platforms);
-        draw_ducks(PV, V, M, triangle_indices, ducks);
-
-        frame += 1;
-        collision = false;
-        camera.o_x += scroll_speed + 0.001*(time);
-
-        if (!game_over) { time += 0.0167; }
     }
-
     sbuff_free(&backgrounds);
     sbuff_free(&platforms);
     sbuff_free(&ducks);

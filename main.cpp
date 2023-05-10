@@ -2,16 +2,18 @@
 // #define COW_PATCH_FRAMERATE_SLEEP
 #include "include.cpp"
 
-char* FACE_LEFT = "duck_sprite/face_left.png";
-char* FACE_RIGHT = "duck_sprite/face_right.png"; 
-char* LEFT_WALK_1 = "duck_sprite/walk_left1.png";
-char* LEFT_WALK_2 = "duck_sprite/walk_left2.png";
-char* RIGHT_WALK_1 = "duck_sprite/walk_right1.png";
-char* RIGHT_WALK_2 = "duck_sprite/walk_right2.png";
-char* LEFT_ATTACK = "duck_sprite/jab_left.png";
-char* RIGHT_ATTACK = "duck_sprite/jab_right.png";
+char* SPRITE_DIR = "duck_sprite/";
+char* FACE_LEFT = "/face_left.png";
+char* FACE_RIGHT = "/face_right.png"; 
+char* LEFT_WALK_1 = "/walk_left1.png";
+char* LEFT_WALK_2 = "/walk_left2.png";
+char* RIGHT_WALK_1 = "/walk_right1.png";
+char* RIGHT_WALK_2 = "/walk_right2.png";
+char* LEFT_ATTACK = "/jab_left.png";
+char* RIGHT_ATTACK = "/jab_right.png";
 
 vec2 DUCK_SZ = {3.0, 3.0};
+real GRAPE_SZ = 3.0;
 
 char* walk_left[2] = {LEFT_WALK_1, LEFT_WALK_2};
 char* walk_right[2] = {RIGHT_WALK_1, RIGHT_WALK_2};
@@ -115,7 +117,7 @@ void update_duck(Duck* duck) {
     } 
 }
 
-void generate_new_platform(Land prev, vec2 y_limits, StretchyBuffer<Land>* platforms, StretchyBuffer<Duck>* ducks) {
+void generate_new_platform(Land prev, vec2 y_limits, StretchyBuffer<Land>* platforms, StretchyBuffer<Duck>* ducks, StretchyBuffer<vec2>* grapes) {
         real max_x = prev.position.x + prev.size.x + 10;
         real min_x = prev.position.x + prev.size.x + 5;
 
@@ -129,13 +131,22 @@ void generate_new_platform(Land prev, vec2 y_limits, StretchyBuffer<Land>* platf
         new_platform.size = {random_real(10, 30), 3.0};
         sbuff_push_back(platforms, new_platform);
 
+        vec2 platform_limits = {new_platform.position.x, new_platform.position.x + new_platform.size.x - 3.0};
+        real r = random_real(0, 1);
+        if (r > 0.5) {
+            vec2 new_grape = {
+                random_real(platform_limits[0], platform_limits[1]),
+                new_platform.position.y + 3.5
+            };
+            sbuff_push_back(grapes, new_grape);
+        }
+
         if (new_platform.size.x > 20) {
             vec2 duck_position = {
                 new_platform.position.x + new_platform.size.x/2,
                 new_platform.position.y + new_platform.size.y
             };
 
-            vec2 platform_limits = {new_platform.position.x, new_platform.position.x + new_platform.size.x - 3.0};
             Duck new_duck;
             new_duck.position = duck_position;
             new_duck.platform = platforms->length;
@@ -145,7 +156,7 @@ void generate_new_platform(Land prev, vec2 y_limits, StretchyBuffer<Land>* platf
         }
 }
 
-void init_platforms(vec2 y_limits, StretchyBuffer<Land>* platforms, StretchyBuffer<Duck>* ducks) {
+void init_platforms(vec2 y_limits, StretchyBuffer<Land>* platforms, StretchyBuffer<Duck>* ducks, StretchyBuffer<vec2>* grapes) {
     srand(time(NULL));
 
     Land initial_platform;
@@ -155,7 +166,7 @@ void init_platforms(vec2 y_limits, StretchyBuffer<Land>* platforms, StretchyBuff
     
     for (int i = 1; i < 10; i++) {
         Land prev = platforms->data[i-1];
-        generate_new_platform(prev, y_limits, platforms, ducks);
+        generate_new_platform(prev, y_limits, platforms, ducks, grapes);
     }
 }
 
@@ -207,7 +218,26 @@ void draw_ducks(mat4 PV, mat4 V, mat4 M, int3 triangle_indices[], StretchyBuffer
             {duck.position.x, duck.position.y + DUCK_SZ.y, 0},
         };
 
-        mesh_draw(PV, V, M, 2, triangle_indices, 4, duck_vp, NULL, NULL, {}, texture_coords, duck.texture);
+        char *texture_path = (char*)calloc(sizeof(char), 100);
+        texture_path = strcpy(texture_path, SPRITE_DIR);
+        texture_path = strcat(strcat(texture_path, "yellow"), duck.texture);
+
+        mesh_draw(PV, V, M, 2, triangle_indices, 4, duck_vp, NULL, NULL, {}, texture_coords, texture_path);
+    }
+}
+
+void draw_grapes(mat4 PV, mat4 V, mat4 M, int3 triangle_indices[], StretchyBuffer<vec2> grapes) {
+    vec2 texture_coords[] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    for (int i = 0; i < grapes.length; i++) {
+        vec2 grape_pos = grapes[i];
+        vec3 grape_vp[] = {
+            {grape_pos.x, grape_pos.y, 0},
+            {grape_pos.x + GRAPE_SZ, grape_pos.y, 0},
+            {grape_pos.x + GRAPE_SZ, grape_pos.y + GRAPE_SZ, 0},
+            {grape_pos.x, grape_pos.y + GRAPE_SZ, 0},
+        };
+
+        mesh_draw(PV, V, M, 2, triangle_indices, 4, grape_vp, NULL, NULL, {}, texture_coords, "elements/grape.png");
     }
 }
 
@@ -234,12 +264,12 @@ void update_competition(Duck* duck) {
     }
 }
 
-void update_platforms(int i, StretchyBuffer<Land>* platforms, StretchyBuffer<Duck>* ducks, real x_limit, vec2 y_limits) {
+void update_platforms(int i, StretchyBuffer<Land>* platforms, StretchyBuffer<Duck>* ducks, StretchyBuffer<vec2>* grapes, real x_limit, vec2 y_limits) {
     Land platform = platforms->data[i];
 
     if (platform.position.x + platform.size.x < x_limit) {
         Land last = platforms->data[platforms->length-1];
-        generate_new_platform(last, y_limits, platforms, ducks);
+        generate_new_platform(last, y_limits, platforms, ducks, grapes);
         sbuff_delete(platforms, i);
     }
 }
@@ -247,14 +277,16 @@ void update_platforms(int i, StretchyBuffer<Land>* platforms, StretchyBuffer<Duc
 void handle_duck_collision(CollisionType collision_type, Duck* main_duck, int i, StretchyBuffer<Duck>* ducks) {
     Duck *other_duck = &ducks->data[i];
     if (collision_type == LEFT_COLLISION) {
-        if (main_duck->attack > 0) {
+        if (main_duck->attack > 0 && other_duck->alive) {
+            sound_play_sound("elements/quack.wav");
             other_duck->alive = false;
         } else {
             main_duck->delta.x = other_duck->direction == LEFT ? main_duck->delta.x - 2 : 0;
         }
 
     } else if (collision_type == RIGHT_COLLISION) {
-        if (main_duck->attack > 0) {
+        if (main_duck->attack > 0 && other_duck->alive) {
+            sound_play_sound("elements/quack.wav");
             other_duck->alive = false;
         } else {
             main_duck->delta.x = other_duck->direction == RIGHT ? main_duck->delta.x + 2 : 0;
@@ -292,7 +324,7 @@ void draw_backgrounds(mat4 PV, mat4 V, mat4 M, real screen_width, real screen_he
     mesh_draw(PV, V, M, 2, triangle_indices, 4, bg_vp2, NULL, NULL, {}, texture_coords, background_texture);
 }
 
-void reset_game(Camera2D* camera, Duck* main_duck, real* time, real* scroll_speed, StretchyBuffer<Land>* platforms, StretchyBuffer<Duck>* ducks, StretchyBuffer<real>* backgrounds) {
+void reset_game(Camera2D* camera, Duck* main_duck, real* score, real* scroll_speed, StretchyBuffer<Land>* platforms, StretchyBuffer<Duck>* ducks, StretchyBuffer<real>* backgrounds, StretchyBuffer<vec2>* grapes) {
     camera->o_x = 0.0;
     camera->o_y = 0.0;
 
@@ -303,13 +335,14 @@ void reset_game(Camera2D* camera, Duck* main_duck, real* time, real* scroll_spee
     sbuff_free(platforms);
     sbuff_free(ducks);
     sbuff_free(backgrounds);
+    sbuff_free(grapes);
 
-    init_platforms(y_limits, platforms, ducks);
+    init_platforms(y_limits, platforms, ducks, grapes);
     init_background(backgrounds, screen_width, screen_height);
     
     main_duck->position = {0, 0};
 
-    *time = 0.0;
+    *score = 0.0;
     *scroll_speed = 0.2;
 }
 
@@ -323,12 +356,14 @@ void final() {
     
     Duck main_duck;
     main_duck.position = {0,0};
+    char* duck_colors[] = {"yellow", "red", "blue", "green", "purple"};
+    int color_idx = 0;
 
     int3 triangle_indices[] = {{0, 1, 2}, {0, 2, 3}};
     vec2 texture_coords[] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
-    real time = 0.0;
-    real high_score = time;
-    real scroll_speed = 0.2;
+    real score = 0.0;
+    real high_score = score;
+    real scroll_speed = 0.25;
     vec2 gravity = {0, -0.9};
     bool collision = false;
 
@@ -337,27 +372,31 @@ void final() {
     StretchyBuffer<Land> platforms = {};
     StretchyBuffer<Duck> ducks = {};
     StretchyBuffer<real> backgrounds = {};
+    StretchyBuffer<vec2> grapes = {};
 
-    init_platforms(y_limits, &platforms, &ducks);
+    init_platforms(y_limits, &platforms, &ducks, &grapes);
     init_background(&backgrounds, screen_width, screen_height);
 
     while (cow_begin_frame()) {
+        char *texture_path = (char*)calloc(sizeof(char), 100);
+        texture_path = strcpy(texture_path, SPRITE_DIR);
+
         mat4 PV = camera_get_PV(&camera);
         real x_limit = camera.o_x - 2*screen_height;
         gui_readout("high score", &high_score);
-        gui_readout("time", &time);
+        gui_readout("score", &score);
+        gui_slider("duck color", &color_idx, 0, 4, 'j', 'k', true);
         
         if (game_over) {
             draw_backgrounds(PV, V, M, screen_width, screen_height, triangle_indices, &backgrounds);
             gui_printf("game over :( press space to play again!");
-            if (time > high_score) { high_score = time; }
+            if (score > high_score) { high_score = score; }
             if (gui_button("play again", COW_KEY_SPACE)) {
-                reset_game(&camera, &main_duck, &time, &scroll_speed, &platforms, &ducks, &backgrounds);
+                reset_game(&camera, &main_duck, &score, &scroll_speed, &platforms, &ducks, &backgrounds, &grapes);
                 game_over = false;
             }
 
         } else {
-
             update_duck(&main_duck);
             update_background(&backgrounds, camera);
             draw_backgrounds(PV, V, M, screen_width, screen_height, triangle_indices, &backgrounds);
@@ -376,7 +415,7 @@ void final() {
             for (int i = 0; i < platforms.length; i++) {
                 Land platform = platforms[i];
 
-                update_platforms(i, &platforms, &ducks, x_limit, y_limits);
+                update_platforms(i, &platforms, &ducks, &grapes, x_limit, y_limits);
 
                 CollisionType collision_type = check_collision(main_duck.position, DUCK_SZ, platform.position, platform.size);
                 if (collision_type == BOTTOM_COLLISION) {
@@ -384,6 +423,14 @@ void final() {
                     main_duck.position.y = platform.position.y + platform.size.y;
                     main_duck.on_ground = true;
                     collision = true;
+                }
+            }
+
+            for (int i = 0; i < grapes.length; i++) {
+                if (check_collision(main_duck.position, DUCK_SZ, grapes[i], {GRAPE_SZ, GRAPE_SZ})) {
+                    sound_play_sound("elements/nom.wav");
+                    score += 5.0;
+                    sbuff_delete(&grapes, i);
                 }
             }
 
@@ -401,15 +448,17 @@ void final() {
                 {main_duck.position.x, main_duck.position.y + DUCK_SZ.y, 0},
             };
 
-            mesh_draw(PV, V, M, 2, triangle_indices, 4, duck_vp, NULL, NULL, {}, texture_coords, main_duck.texture);
+            texture_path = strcat(strcat(texture_path, duck_colors[color_idx]), main_duck.texture);
+            mesh_draw(PV, V, M, 2, triangle_indices, 4, duck_vp, NULL, NULL, {}, texture_coords, texture_path);
             
             draw_platforms(PV, V, M, triangle_indices, platforms);
+            draw_grapes(PV, V, M, triangle_indices, grapes);
             draw_ducks(PV, V, M, triangle_indices, ducks);
 
             frame += 1;
             collision = false;
-            camera.o_x += scroll_speed + 0.001*(time);
-            time += 0.0167;
+            camera.o_x += scroll_speed + 0.001*(score);
+            score += 0.0167;
 
             if (main_duck.position.x < camera.o_x - screen_height 
                 || main_duck.position.y < camera.o_y - screen_height/2) {
@@ -420,6 +469,7 @@ void final() {
     sbuff_free(&backgrounds);
     sbuff_free(&platforms);
     sbuff_free(&ducks);
+    sbuff_free(&grapes);
 }
 
 

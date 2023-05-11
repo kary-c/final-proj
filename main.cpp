@@ -366,6 +366,7 @@ void final() {
     real scroll_speed = 0.25;
     vec2 gravity = {0, -0.9};
     bool collision = false;
+    char* text = "a->left, d->right, w->jump, SPACE->attack\n survive as long as u can! eat grapes for extra points :)";
 
     vec2 y_limits = {0.0 - screen_height/2, 0.0 + screen_height/2};
     
@@ -386,6 +387,15 @@ void final() {
         gui_readout("high score", &high_score);
         gui_readout("score", &score);
         gui_slider("duck color", &color_idx, 0, 4, 'j', 'k', true);
+
+        text_draw(
+            PV,
+            text,
+            { camera.o_x - 10.0, 22 },
+            monokai.black,
+            25,
+            { 0.0, 0.0 },
+            true);
         
         if (game_over) {
             draw_backgrounds(PV, V, M, screen_width, screen_height, triangle_indices, &backgrounds);
@@ -428,7 +438,7 @@ void final() {
 
             for (int i = 0; i < grapes.length; i++) {
                 if (check_collision(main_duck.position, DUCK_SZ, grapes[i], {GRAPE_SZ, GRAPE_SZ})) {
-                    sound_play_sound("elements/nom.wav");
+                    sound_play_sound("elements/chomp.wav");
                     score += 5.0;
                     sbuff_delete(&grapes, i);
                 }
